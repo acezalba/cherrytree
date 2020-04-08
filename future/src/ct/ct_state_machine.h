@@ -23,6 +23,9 @@
 
 #include "ct_treestore.h"
 #include "ct_doc_rw.h"
+#include "ct_image.h"
+#include "ct_codebox.h"
+#include "ct_table.h"
 #include <vector>
 #include <map>
 #include <glibmm/regex.h>
@@ -30,15 +33,90 @@
 
 class CtMainWin;
 
+class CtAnchoredWidgetState
+{
+public:
+    CtAnchoredWidgetState(int charOffset, const std::string& justification) : charOffset(charOffset), justification(justification) {}
+    virtual bool equal(std::shared_ptr<CtAnchoredWidgetState> state) = 0;
+    virtual CtAnchoredWidget* to_widget(CtMainWin* pCtMainWin) = 0;
+
+public:
+    int charOffset;
+    std::string justification;
+};
+
+class CtAnchoredWidgetState_ImagePng : public CtAnchoredWidgetState
+{
+public:
+    CtAnchoredWidgetState_ImagePng(CtImagePng* image);
+    virtual bool equal(std::shared_ptr<CtAnchoredWidgetState> state);
+    virtual CtAnchoredWidget* to_widget(CtMainWin* pCtMainWin);
+
+public:
+    Glib::ustring link;
+    Glib::RefPtr<Gdk::Pixbuf> pixbuf;
+};
+
+class CtAnchoredWidgetState_Anchor : public CtAnchoredWidgetState
+{
+public:
+    CtAnchoredWidgetState_Anchor(CtImageAnchor* anchor);
+    virtual bool equal(std::shared_ptr<CtAnchoredWidgetState> state);
+    virtual CtAnchoredWidget* to_widget(CtMainWin* pCtMainWin);
+
+public:
+    Glib::ustring name;
+};
+
+class CtAnchoredWidgetState_EmbFile: public CtAnchoredWidgetState
+{
+public:
+    CtAnchoredWidgetState_EmbFile(CtImageEmbFile* embFile);
+    virtual bool equal(std::shared_ptr<CtAnchoredWidgetState> state);
+    virtual CtAnchoredWidget* to_widget(CtMainWin* pCtMainWin);
+
+public:
+    Glib::ustring fileName;
+    std::string   rawBlob;      // raw data, not a string
+    double        timeSeconds;
+};
+
+class CtAnchoredWidgetState_Codebox : public CtAnchoredWidgetState
+{
+public:
+    CtAnchoredWidgetState_Codebox(CtCodebox* codebox);
+    virtual bool equal(std::shared_ptr<CtAnchoredWidgetState> state);
+    virtual CtAnchoredWidget* to_widget(CtMainWin* pCtMainWin);
+
+public:
+    Glib::ustring content, syntax;
+    int width, height;
+    bool widthInPixels, brackets, showNum;
+};
+
+class CtAnchoredWidgetState_Table: public CtAnchoredWidgetState
+{
+public:
+    CtAnchoredWidgetState_Table(CtTable* table);
+    virtual bool equal(std::shared_ptr<CtAnchoredWidgetState> state);
+    virtual CtAnchoredWidget* to_widget(CtMainWin* pCtMainWin);
+
+public:
+    int colMin;
+    int colMax;
+    std::vector<std::vector<Glib::ustring>> rows;
+};
+
+
 struct CtNodeState
 {
     CtNodeState() : buffer_xml("buffer") { }
-    ~CtNodeState() { for (auto widget: widgets) delete widget; }
+    ~CtNodeState() { }
 
-    CtXmlWrite                   buffer_xml;
-    Glib::ustring                buffer_xml_string;
-    std::list<CtAnchoredWidget*> widgets;
-    int                          cursor_pos;
+    std::list<std::shared_ptr<CtAnchoredWidgetState>> widgetStates;
+    CtXmlWrite     buffer_xml;
+    Glib::ustring  buffer_xml_string;
+    int            cursor_pos;
 };
 
 struct CtNodeStates
@@ -70,6 +148,8 @@ public:
     void update_state();
     void update_state(CtTreeIter tree_iter);
     void update_curr_state_cursor_pos(gint64 node_id);
+
+    void set_go_bk_fw_click(bool val) { _go_bk_fw_click = val; }
 
 private:
     CtMainWin*                  _pCtMainWin;

@@ -143,6 +143,11 @@ void CtTreeIter::set_node_aux_icon(Glib::RefPtr<Gdk::Pixbuf> rPixbuf)
     (*this)->set_value(_pColumns->rColPixbufAux, rPixbuf);
 }
 
+void CtTreeIter::set_node_sequence(gint64 num)
+{
+    (*this)->set_value(_pColumns->colNodeSequence, num);
+}
+
 Glib::RefPtr<Gsv::Buffer> CtTreeIter::get_node_text_buffer() const
 {
     Glib::RefPtr<Gsv::Buffer> rRetTextBuffer{nullptr};
@@ -540,6 +545,15 @@ void CtTreeStore::update_node_data(const Gtk::TreeIter& treeIter, const CtNodeDa
     _nodes_names_dict[nodeData.nodeId] = nodeData.name;
 }
 
+void CtTreeStore::update_node_icon(const Gtk::TreeIter& treeIter)
+{
+    auto icon = _get_node_icon(_rTreeStore->iter_depth(treeIter),
+                               treeIter->get_value(_columns.colSyntaxHighlighting),
+                               treeIter->get_value(_columns.colCustomIconId));
+    treeIter->set_value(_columns.rColPixbuf, icon);
+}
+
+
 void CtTreeStore::update_node_aux_icon(const Gtk::TreeIter& treeIter)
 {
     bool is_ro = treeIter->get_value(_columns.colNodeRO);
@@ -673,7 +687,8 @@ void CtTreeStore::apply_textbuffer_to_textview(const CtTreeIter& treeIter, CtTex
     }
 
     pTextView->show_all();
-    pTextView->grab_focus();
+    // we shouldn't lose focus from TREE because TREE shortcuts/arrays movement stop working
+    // pTextView->grab_focus();
 
     // connect signals
     _curr_node_sigc_conn.push_back(
@@ -900,3 +915,33 @@ CtTreeIter CtTreeStore::to_ct_tree_iter(Gtk::TreeIter tree_iter)
 {
     return CtTreeIter(tree_iter, &get_columns(), _pCtSQLite);
 }
+
+void CtTreeStore::nodes_sequences_fix(Gtk::TreeIter father_iter,  bool process_children)
+{
+    auto children = father_iter ? father_iter->children() : _rTreeStore->children();
+    gint64 node_sequence = 0;
+    for (auto& child: children)
+    {
+        ++node_sequence;
+        auto ct_child = to_ct_tree_iter(child);
+        if (ct_child.get_node_sequence() != node_sequence)
+        {
+            ct_child.set_node_sequence(node_sequence);
+            ct_child.pending_edit_db_node_hier();
+        }
+        if (process_children)
+            nodes_sequences_fix(child, process_children);
+    }
+}
+
+void CtTreeStore::refresh_node_icons(Gtk::TreeIter father_iter, bool cherry_only)
+{
+    if (cherry_only)
+        if (CtConst::NODE_ICON_TYPE_CHERRY != _pCtMainWin->get_ct_config()->nodesIcons)
+            return;
+    if (father_iter)
+        update_node_icon(father_iter);
+    for (auto& child: father_iter ? father_iter->children() : _rTreeStore->children())
+        refresh_node_icons(child, cherry_only);
+}
+

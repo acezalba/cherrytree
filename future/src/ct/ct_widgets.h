@@ -44,6 +44,7 @@ protected:
 };
 
 class CtMainWin;
+class CtAnchoredWidgetState;
 
 class CtAnchoredWidget : public Gtk::EventBox
 {
@@ -59,8 +60,7 @@ public:
     virtual bool to_sqlite(sqlite3* pDb, const gint64 node_id, const int offset_adjustment) = 0;
     virtual void set_modified_false() = 0;
     virtual CtAnchWidgType get_type() = 0;
-    virtual CtAnchoredWidget* clone() = 0;
-    virtual bool equal(CtAnchoredWidget*) = 0;
+    virtual std::shared_ptr<CtAnchoredWidgetState> get_state() = 0;
 
     void updateOffset(int charOffset) { _charOffset = charOffset; }
     void updateJustification(const std::string& justification) { _justification = justification; }
@@ -99,6 +99,7 @@ public:
     void replace_text(const Glib::ustring& text, int start_offset, int end_offset);
 
     void for_event_after_double_click_button1(GdkEvent* event);
+    void for_event_after_triple_click_button1(GdkEvent* event);
     void for_event_after_button_press(GdkEvent* event);
     void for_event_after_key_press(GdkEvent* event, const Glib::ustring& syntaxHighlighting);
 
@@ -109,11 +110,10 @@ private:
     bool          _apply_tag_try_link(Gtk::TextIter iter_end, int offset_cursor);
     Glib::ustring _get_former_line_indentation(Gtk::TextIter iter_start);
     void          _special_char_replace(gunichar special_char, Gtk::TextIter iter_start, Gtk::TextIter iter_insert);
-    CtMainWin* _pCtMainWin;
 
 public:
     static const double TEXT_SCROLL_MARGIN;
 
-protected:
-    void _setFontForSyntax(const std::string& syntaxHighlighting);
+private:
+    CtMainWin* _pCtMainWin;
 };

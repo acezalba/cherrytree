@@ -142,10 +142,10 @@ bool CtMiscUtil::node_siblings_sort_iteration(Glib::RefPtr<Gtk::TreeStore> model
 std::string CtMiscUtil::get_node_hierarchical_name(CtTreeIter tree_iter, const char* separator/*="--"*/,
                                                    bool for_filename/*=true*/, bool root_to_leaf/*=true*/, const char* trailer/*=""*/)
 {
-    std::string hierarchical_name = str::trim(tree_iter.get_node_name());// todo: exports.clean_text_to_utf8(dad.treestore[tree_iter][1]).strip()
+    std::string hierarchical_name = str::trim(tree_iter.get_node_name());
     CtTreeIter father_iter = tree_iter.parent();
     while (father_iter) {
-        std::string father_name = str::trim(father_iter.get_node_name());// todo: exports.clean_text_to_utf8(dad.treestore[father_iter][1]).strip()
+        std::string father_name = str::trim(father_iter.get_node_name());
         if (root_to_leaf)
             hierarchical_name = father_name + separator + hierarchical_name;
         else
@@ -171,7 +171,7 @@ std::string CtMiscUtil::clean_from_chars_not_for_filename(std::string filename)
         filename = str::replace(filename, str, "");
     }
     filename = str::trim(filename);
-    filename = str::replace(filename, " " /*todo: CtConst::CHAR_SPACE*/, CtConst::CHAR_USCORE);
+    filename = str::replace(filename, " ", CtConst::CHAR_USCORE);
     return filename;
 }
 
@@ -547,7 +547,7 @@ std::string CtFontUtil::get_font_family(const std::string& fontStr)
 
 std::string CtFontUtil::get_font_size_str(const std::string& fontStr)
 {
-    return std::to_string(Pango::FontDescription(fontStr).get_size());
+    return std::to_string(Pango::FontDescription(fontStr).get_size()/Pango::SCALE);
 }
 
 
@@ -657,7 +657,7 @@ guint32 CtRgbUtil::get_rgb24int_from_str_any(const char* rgbStrAny)
 std::string CtRgbUtil::rgb_to_string(Gdk::RGBA color)
 {
     char rgbStrOut[16];
-    sprintf(rgbStrOut, "#%.2x%.2x%.2x", color.get_red_u(), color.get_green_u(), color.get_blue_u());
+    sprintf(rgbStrOut, "#%.4x%.4x%.4x", color.get_red_u(), color.get_green_u(), color.get_blue_u());
     return rgbStrOut;
 }
 
@@ -796,6 +796,14 @@ time_t CtFileSystem::getmtime(const std::string& path)
     return time;
 }
 
+int CtFileSystem::getsize(const std::string& path)
+{
+    GStatBuf st;
+    if (g_stat(path.c_str(), &st) == 0)
+        return st.st_size;
+    return 0;
+}
+
 // Open Filepath with External App
 void CtFileSystem::external_filepath_open(const std::string& filepath, bool open_fold_if_no_app_error)
 {
@@ -826,7 +834,19 @@ void CtFileSystem::external_folderpath_open(const std::string& folderpath)
         if cons.IS_WIN_OS: os.startfile(filepath)
         else: subprocess.call(config.LINK_CUSTOM_ACTION_DEFAULT_FILE % re.escape(filepath), shell=True)
         */
-    g_app_info_launch_default_for_uri(("folder://" + folderpath).c_str(), nullptr, nullptr);
+
+    // https://stackoverflow.com/questions/42442189/how-to-open-spawn-a-file-with-glib-gtkmm-in-windows
+#ifdef _WIN32
+    //ShellExecute(NULL, "open", relatedEntry->get_text().c_str(), NULL, NULL, SW_SHOWDEFAULT);
+    g_warning ("Failed to open uri: %s", folderpath.c_str());
+#elif defined(__APPLE__)
+    //system(("open " + relatedEntry->get_text()).c_str());
+#else
+    gchar *path = g_filename_to_uri(folderpath.c_str(), NULL, NULL);
+    Glib::ustring xgd = "xdg-open " + std::string(path);
+    system(xgd.c_str());
+    g_free(path);
+#endif
 }
 
 Glib::ustring CtFileSystem::prepare_export_folder(Glib::ustring dir_place, Glib::ustring new_folder, bool overwrite_existing)

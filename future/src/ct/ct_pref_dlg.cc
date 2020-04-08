@@ -156,9 +156,9 @@ Gtk::Widget* CtPrefDlg::build_tab_text_n_code()
     Gtk::Button* button_reset = Gtk::manage(new Gtk::Button());
     button_reset->set_image(*_pCtMainWin->new_image_from_stock("g-undo", Gtk::ICON_SIZE_BUTTON));
     button_reset->set_tooltip_text(_("Reset to Default"));
-    hbox_reset->pack_start(*Gtk::manage(new Gtk::Label()), true, false); // todo: not sure about third arg
+    hbox_reset->pack_start(*Gtk::manage(new Gtk::Label()), true, false);
     hbox_reset->pack_start(*button_reset, false, false);
-    hbox_reset->pack_start(*Gtk::manage(new Gtk::Label()), true, false); // todo: not sure about third arg
+    hbox_reset->pack_start(*Gtk::manage(new Gtk::Label()), true, false);
     vbox_special_chars->pack_start(*Gtk::manage(new Gtk::Label()), false, false);
     vbox_special_chars->pack_start(*label_special_chars, false, false);
     vbox_special_chars->pack_start(*hbox_reset, false, false);
@@ -449,20 +449,10 @@ Gtk::Widget* CtPrefDlg::build_tab_rich_text()
     colorbutton_text_fg->signal_color_set().connect([this, pConfig, colorbutton_text_fg](){
         pConfig->rtDefFg = CtRgbUtil::rgb_any_to_24(colorbutton_text_fg->get_rgba());
         _pCtMainWin->configure_theme();
-        //if dad.curr_tree_iter and dad.syntax_highlighting == cons.RICH_TEXT_ID:
-        //    dad.widget_set_colors(dad.sourceview, dad.rt_def_fg, dad.rt_def_bg, False)
-        //    support.rich_text_node_modify_codeboxes_color(dad.curr_buffer.get_start_iter(), dad)
     });
     colorbutton_text_bg->signal_color_set().connect([this, pConfig, colorbutton_text_bg](){
         pConfig->rtDefBg = CtRgbUtil::rgb_any_to_24(colorbutton_text_bg->get_rgba());
         _pCtMainWin->configure_theme();
-        //if dad.curr_tree_iter and dad.syntax_highlighting == cons.RICH_TEXT_ID:
-        //    if dad.rt_highl_curr_line:
-        //        dad.set_sourcebuffer_with_style_scheme()
-        //        dad.sourceview.set_buffer(dad.curr_buffer)
-        //        dad.objects_buffer_refresh()
-        //    dad.widget_set_colors(dad.sourceview, dad.rt_def_fg, dad.rt_def_bg, False)
-        //    support.rich_text_node_modify_codeboxes_color(dad.curr_buffer.get_start_iter(), dad)
     });
     radiobutton_rt_col_light->signal_toggled().connect([radiobutton_rt_col_light, colorbutton_text_fg, colorbutton_text_bg](){
         if (!radiobutton_rt_col_light->get_active()) return;
@@ -779,51 +769,55 @@ Gtk::Widget* CtPrefDlg::build_tab_tree_1()
     pMainBox->pack_start(*frame_nodes_icons, false, false);
     pMainBox->pack_start(*frame_nodes_startup, false, false);
 
-    colorbutton_tree_fg->signal_color_set().connect([this, pConfig, colorbutton_tree_fg](){
+    auto update_tree_color = [this, pConfig, colorbutton_tree_fg, colorbutton_tree_bg]() {
         pConfig->ttDefFg = CtRgbUtil::rgb_any_to_24(colorbutton_tree_fg->get_rgba());
-        _pCtMainWin->configure_theme();
-    });
-    colorbutton_tree_bg->signal_color_set().connect([this, pConfig, colorbutton_tree_bg](){
         pConfig->ttDefBg = CtRgbUtil::rgb_any_to_24(colorbutton_tree_bg->get_rgba());
         _pCtMainWin->configure_theme();
+    };
+
+    colorbutton_tree_fg->signal_color_set().connect([update_tree_color, radiobutton_tt_col_custom](){
+        if (!radiobutton_tt_col_custom->get_active()) return;
+        update_tree_color();
     });
-    radiobutton_tt_col_light->signal_toggled().connect([radiobutton_tt_col_light, colorbutton_tree_fg, colorbutton_tree_bg](){
+    colorbutton_tree_bg->signal_color_set().connect([update_tree_color, radiobutton_tt_col_custom](){
+        if (!radiobutton_tt_col_custom->get_active()) return;
+        update_tree_color();
+    });
+    radiobutton_tt_col_light->signal_toggled().connect([radiobutton_tt_col_light, colorbutton_tree_fg, colorbutton_tree_bg, update_tree_color](){
         if (!radiobutton_tt_col_light->get_active()) return;
         colorbutton_tree_fg->set_rgba(Gdk::RGBA(CtConst::TREE_TEXT_LIGHT_FG));
         colorbutton_tree_bg->set_rgba(Gdk::RGBA(CtConst::TREE_TEXT_LIGHT_BG));
         colorbutton_tree_fg->set_sensitive(false);
         colorbutton_tree_bg->set_sensitive(false);
-        g_signal_emit_by_name(colorbutton_tree_fg->gobj(), "color-set");
-        g_signal_emit_by_name(colorbutton_tree_bg->gobj(), "color-set");
+        update_tree_color();
     });
-    radiobutton_tt_col_dark->signal_toggled().connect([radiobutton_tt_col_dark, colorbutton_tree_fg, colorbutton_tree_bg](){
-        if (radiobutton_tt_col_dark->get_active()) return;
+    radiobutton_tt_col_dark->signal_toggled().connect([radiobutton_tt_col_dark, colorbutton_tree_fg, colorbutton_tree_bg, update_tree_color](){
+        if (!radiobutton_tt_col_dark->get_active()) return;
         colorbutton_tree_fg->set_rgba(Gdk::RGBA(CtConst::TREE_TEXT_DARK_FG));
         colorbutton_tree_bg->set_rgba(Gdk::RGBA(CtConst::TREE_TEXT_DARK_BG));
         colorbutton_tree_fg->set_sensitive(false);
         colorbutton_tree_bg->set_sensitive(false);
-        g_signal_emit_by_name(colorbutton_tree_fg->gobj(), "color-set");
-        g_signal_emit_by_name(colorbutton_tree_bg->gobj(), "color-set");
+        update_tree_color();
     });
     radiobutton_tt_col_custom->signal_toggled().connect([radiobutton_tt_col_custom, colorbutton_tree_fg, colorbutton_tree_bg](){
         if (!radiobutton_tt_col_custom->get_active()) return;
         colorbutton_tree_fg->set_sensitive(true);
         colorbutton_tree_bg->set_sensitive(true);
     });
-    radiobutton_node_icon_cherry->signal_toggled().connect([pConfig, radiobutton_node_icon_cherry](){
+    radiobutton_node_icon_cherry->signal_toggled().connect([this, pConfig, radiobutton_node_icon_cherry](){
         if (!radiobutton_node_icon_cherry->get_active()) return;
         pConfig->nodesIcons = "c";
-        //dad.treeview_refresh(change_icon=True)
+        _pCtMainWin->curr_tree_store().refresh_node_icons(Gtk::TreeIter(), false);
     });
-    radiobutton_node_icon_custom->signal_toggled().connect([pConfig, radiobutton_node_icon_custom](){
+    radiobutton_node_icon_custom->signal_toggled().connect([this, pConfig, radiobutton_node_icon_custom](){
         if (!radiobutton_node_icon_custom->get_active()) return;
         pConfig->nodesIcons = "b";
-        //dad.treeview_refresh(change_icon=True)
+        _pCtMainWin->curr_tree_store().refresh_node_icons(Gtk::TreeIter(), false);
     });
-    radiobutton_node_icon_none->signal_toggled().connect([pConfig, radiobutton_node_icon_none](){
+    radiobutton_node_icon_none->signal_toggled().connect([this, pConfig, radiobutton_node_icon_none](){
         if (!radiobutton_node_icon_none->get_active()) return;
         pConfig->nodesIcons = "n";
-        //dad.treeview_refresh(change_icon=True)
+        _pCtMainWin->curr_tree_store().refresh_node_icons(Gtk::TreeIter(), false);
     });
     c_icon_button->signal_clicked().connect([this, pConfig, c_icon_button](){
         auto itemStore = CtChooseDialogListStore::create();
@@ -833,7 +827,7 @@ Gtk::Widget* CtPrefDlg::build_tab_tree_1()
         if (res) {
             pConfig->defaultIconText = std::stoi(res->get_value(itemStore->columns.key));
             c_icon_button->set_image(*_pCtMainWin->new_image_from_stock(res->get_value(itemStore->columns.stock_id), Gtk::ICON_SIZE_BUTTON));
-            //    dad.treeview_refresh(change_icon=True)
+            _pCtMainWin->curr_tree_store().refresh_node_icons(Gtk::TreeIter(), false);
         }
     });
     radiobutton_nodes_startup_expand->signal_toggled().connect([pConfig, radiobutton_nodes_startup_expand, checkbutton_nodes_bookm_exp](){

@@ -22,10 +22,45 @@
 #include "ct_actions.h"
 #include "ct_export2html.h"
 #include "ct_pref_dlg.h"
+#include "ct_clipboard.h"
 #include <gtkmm/dialog.h>
 #include <gtkmm/stock.h>
 #include <fstream>
 #include <cstdlib>
+
+// Cut Link
+void CtActions::link_cut()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    if (!_link_check_around_cursor().empty())
+        g_signal_emit_by_name(G_OBJECT(_pCtMainWin->get_text_view().gobj()), "cut-clipboard");
+}
+
+// Copy Link
+void CtActions::link_copy()
+{
+    if (!_link_check_around_cursor().empty())
+        g_signal_emit_by_name(G_OBJECT(_pCtMainWin->get_text_view().gobj()), "copy-clipboard");
+}
+
+//Dismiss Link
+void CtActions::link_dismiss()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    if (!_link_check_around_cursor().empty())
+        remove_text_formatting();
+}
+
+// Delete Link
+void CtActions::link_delete()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    if (!_link_check_around_cursor().empty())
+    {
+        _curr_buffer()->erase_selection(true, _pCtMainWin->get_text_view().get_editable());
+        _pCtMainWin->get_text_view().grab_focus();
+    }
+}
 
 // Cut Anchor
 void CtActions::anchor_cut()
@@ -197,7 +232,6 @@ void CtActions::image_link_edit()
     {
         curr_image_anchor->set_link(property_value);
         curr_image_anchor->update_label_widget();
-        // todo: self.objects_buffer_refresh()
         _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true/*new_machine_state*/);
     }
 }
@@ -263,7 +297,7 @@ void CtActions::link_clicked(const Glib::ustring& tag_property_value, bool from_
          }
          _pCtMainWin->curr_tree_view().set_cursor_safe(tree_iter);
          _pCtMainWin->get_text_view().grab_focus();
-         // todo: self.sourceview.get_window(gtk.TEXT_WINDOW_TEXT).set_cursor(gtk.gdk.Cursor(gtk.gdk.XTERM))
+         _pCtMainWin->get_text_view().get_window(Gtk::TEXT_WINDOW_TEXT)->set_cursor(Gdk::Cursor::create(Gdk::XTERM));
          _pCtMainWin->get_text_view().set_tooltip_text("");
          if (vec.size() >= 3)
          {
@@ -487,11 +521,153 @@ void CtActions::codebox_decrease_height()
          curr_codebox_anchor->set_width_height(0, curr_codebox_anchor->get_frame_height() - CtCodebox::CB_WIDTH_HEIGHT_STEP_PIX);
 }
 
+void CtActions::table_cut()
+{
+    object_set_selection(curr_table_anchor);
+    g_signal_emit_by_name(G_OBJECT(_pCtMainWin->get_text_view().gobj()), "cut-clipboard");
+}
+
+void CtActions::table_copy()
+{
+    object_set_selection(curr_table_anchor);
+    g_signal_emit_by_name(G_OBJECT(_pCtMainWin->get_text_view().gobj()), "copy-clipboard");
+}
+
+void CtActions::table_delete()
+{
+    object_set_selection(curr_table_anchor);
+    _curr_buffer()->erase_selection(true, _pCtMainWin->get_text_view().get_editable());
+    curr_table_anchor = nullptr;
+   _pCtMainWin->get_text_view().grab_focus();
+}
+
+void CtActions::table_column_add()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    curr_table_anchor->column_add(curr_table_anchor->current_column());
+    _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_column_delete()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    curr_table_anchor->column_delete(curr_table_anchor->current_column());
+    _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_column_left()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    curr_table_anchor->column_move_left(curr_table_anchor->current_column());
+    _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_column_right()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    curr_table_anchor->column_move_right(curr_table_anchor->current_column());
+    _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_row_add()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    curr_table_anchor->row_add(curr_table_anchor->current_row());
+    _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_row_cut()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    table_row_copy();
+    table_row_delete();
+}
+
+void CtActions::table_row_copy()
+{
+    auto table_state = std::dynamic_pointer_cast<CtAnchoredWidgetState_Table>(curr_table_anchor->get_state());
+    // remove rows after current
+    while (table_state->rows.size() > curr_table_anchor->current_row() + 1)
+        table_state->rows.pop_back();
+    // remove rows between current and header
+    while (table_state->rows.size() > 2)
+        table_state->rows.erase(table_state->rows.begin() + 1);
+    CtTable* new_table = dynamic_cast<CtTable*>(table_state->to_widget(_pCtMainWin));
+    CtClipboard(_pCtMainWin).table_row_to_clipboard(new_table);
+    delete new_table;
+}
+
+void CtActions::table_row_paste()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    CtClipboard(_pCtMainWin).table_row_paste(curr_table_anchor);
+}
+
+void CtActions::table_row_delete()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    curr_table_anchor->row_delete(curr_table_anchor->current_row());
+    _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_row_up()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    curr_table_anchor->row_move_up(curr_table_anchor->current_row());
+    _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_row_down()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    curr_table_anchor->row_move_down(curr_table_anchor->current_row());
+    _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_rows_sort_descending()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    if (curr_table_anchor->row_sort_desc())
+        _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_rows_sort_ascending()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    if (curr_table_anchor->row_sort_asc())
+        _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_edit_properties()
+{
+    if (!_is_curr_node_not_read_only_or_error()) return;
+    _pCtMainWin->get_ct_config()->tableColMin = curr_table_anchor->get_col_min();
+    _pCtMainWin->get_ct_config()->tableColMax = curr_table_anchor->get_col_max();
+    if (!_table_dialog(_("Edit Table Properties"), false))
+        return;
+    curr_table_anchor->set_col_min_max(_pCtMainWin->get_ct_config()->tableColMin, _pCtMainWin->get_ct_config()->tableColMax);
+    _pCtMainWin->update_window_save_needed(CtSaveNeededUpdType::nbuf, true /*new_machine_state*/);
+}
+
+void CtActions::table_export()
+{    
+    // todo: find good csv lib
+    return;
+
+    CtDialogs::file_select_args args = {.pParentWin=_pCtMainWin, .curr_folder=_pCtMainWin->get_ct_config()->pickDirCsv,
+                                       .filter_name=_("CSV File"), .filter_pattern={"*.csv"}};
+    Glib::ustring filename = CtDialogs::file_save_as_dialog(args);
+    if (filename.empty()) return;
+    if (str::endswith(filename, ".csv")) filename += ".csv";
+    _pCtMainWin->get_ct_config()->pickDirCsv = Glib::path_get_dirname(filename);
+}
+
 // Anchor Edit Dialog
 void CtActions::_anchor_edit_dialog(CtImageAnchor* anchor, Gtk::TextIter insert_iter, Gtk::TextIter* iter_bound)
 {
-    Glib::ustring dialog_title = anchor->get_anchor_name().empty() ? _("Insert Anchor") :  _("Edit Anchor");
-    Glib::ustring ret_anchor_name = CtDialogs::img_n_entry_dialog(*_pCtMainWin, dialog_title, anchor->get_anchor_name(), "anchor");
+    Glib::ustring dialog_title = anchor == nullptr ? _("Insert Anchor") :  _("Edit Anchor");
+    Glib::ustring name = anchor == nullptr ? "" : anchor->get_anchor_name();
+    Glib::ustring ret_anchor_name = CtDialogs::img_n_entry_dialog(*_pCtMainWin, dialog_title, name, "anchor");
     if (ret_anchor_name.empty()) return;
 
     Glib::ustring image_justification;

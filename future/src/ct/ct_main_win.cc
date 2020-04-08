@@ -66,6 +66,7 @@ CtMainWin::CtMainWin(CtConfig*        pCtConfig,
         _hPaned.add1(_scrolledwindowTree);
         _hPaned.add2(_vboxText);
     }
+    _hPaned.property_wide_handle() = true;
 
     _pMenuBar = pCtMenu->build_menubar();
     _pMenuBar->set_name("MenuBar");
@@ -84,7 +85,7 @@ CtMainWin::CtMainWin(CtConfig*        pCtConfig,
 
     _reset_CtTreestore_CtTreeview();
 
-    _ctTextview.get_style_context()->add_class("ct_textview");
+    _ctTextview.get_style_context()->add_class("ct-view-panel");
 
     _ctTextview.signal_populate_popup().connect(sigc::mem_fun(*this, &CtMainWin::_on_textview_populate_popup));
     _ctTextview.signal_motion_notify_event().connect(sigc::mem_fun(*this, &CtMainWin::_on_textview_motion_notify_event));
@@ -92,15 +93,8 @@ CtMainWin::CtMainWin(CtConfig*        pCtConfig,
     _ctTextview.signal_size_allocate().connect(sigc::mem_fun(*this, &CtMainWin::_on_textview_size_allocate));
     _ctTextview.signal_event().connect(sigc::mem_fun(*this, &CtMainWin::_on_textview_event));
     _ctTextview.signal_event_after().connect(sigc::mem_fun(*this, &CtMainWin::_on_textview_event_after));
-    _ctTextview.signal_scroll_event().connect([this](GdkEventScroll* event)
-    {
-        if (event->state & GDK_CONTROL_MASK and (event->direction == GDK_SCROLL_UP or event->direction == GDK_SCROLL_DOWN))
-        {
-            _ctTextview.zoom_text(event->direction == GDK_SCROLL_UP);
-            return true;
-        }
-        return false;
-    });
+    _ctTextview.signal_scroll_event().connect(sigc::mem_fun(*this, &CtMainWin::_on_textview_scroll_event));
+
     _uCtPairCodeboxMainWin.reset(new CtPairCodeboxMainWin{nullptr, this});
     g_signal_connect(G_OBJECT(_ctTextview.gobj()), "cut-clipboard", G_CALLBACK(CtClipboard::on_cut_clipboard), _uCtPairCodeboxMainWin.get());
     g_signal_connect(G_OBJECT(_ctTextview.gobj()), "copy-clipboard", G_CALLBACK(CtClipboard::on_copy_clipboard), _uCtPairCodeboxMainWin.get());
@@ -142,7 +136,19 @@ Glib::RefPtr<Gsv::Buffer> CtMainWin::get_new_text_buffer(const std::string& synt
     Glib::RefPtr<Gsv::Buffer> rRetTextBuffer;
     rRetTextBuffer = Gsv::Buffer::create(_rGtkTextTagTable);
     rRetTextBuffer->set_max_undo_levels(_pCtConfig->limitUndoableSteps);
-    if (CtConst::RICH_TEXT_ID != syntax)
+    if (CtConst::TABLE_CELL_TEXT_ID == syntax)
+    {
+        rRetTextBuffer->set_style_scheme(_pGsvStyleSchemeManager->get_scheme(CtConst::STYLE_SCHEME_LIGHT));
+    }
+    else if (CtConst::RICH_TEXT_ID == syntax)
+    {
+        // dark theme
+        if (get_ct_config()->rtDefFg == CtConst::RICH_TEXT_DARK_FG && get_ct_config()->rtDefBg == CtConst::RICH_TEXT_DARK_BG)
+            rRetTextBuffer->set_style_scheme(_pGsvStyleSchemeManager->get_scheme(CtConst::STYLE_SCHEME_DARK));
+        else
+            rRetTextBuffer->set_style_scheme(_pGsvStyleSchemeManager->get_scheme(CtConst::STYLE_SCHEME_LIGHT));
+    }
+    else
     {
         rRetTextBuffer->set_style_scheme(_pGsvStyleSchemeManager->get_scheme(_pCtConfig->styleSchemeId));
         if (CtConst::PLAIN_TEXT_ID == syntax)
@@ -382,33 +388,35 @@ bool CtMainWin::apply_tag_try_automatic_bounds(Glib::RefPtr<Gtk::TextBuffer> tex
     return false;
 }
 
-std::string CtMainWin::get_font_css(const std::string& fontStr)
+// Try to select the full paragraph
+bool CtMainWin::apply_tag_try_automatic_bounds_triple_click(Glib::RefPtr<Gtk::TextBuffer> text_buffer, Gtk::TextIter iter_start)
 {
-    g_autofree gchar* pFontCss = g_strdup_printf(
-        "textview text {"
-        "    font-family: %s;"
-        "    font-size: %spx;"
-        "}", CtFontUtil::get_font_family(fontStr).c_str(), CtFontUtil::get_font_size_str(fontStr).c_str());
-    std::string fontCss(pFontCss);
-    return fontCss;
-}
+    Gtk::TextIter iter_end = iter_start;
+    iter_end.forward_to_line_end();
 
-const std::string& CtMainWin::get_font_for_syntax_highlighting(const std::string& syntaxHighlighting)
-{
-    if (0 == syntaxHighlighting.compare(CtConst::RICH_TEXT_ID))
+    iter_end.forward_char();
+    auto next_char = iter_end.get_char();
+    while (next_char != '\n' && next_char != ' ')
     {
-        return _pCtConfig->rtFont;
+        // forward to the end of the line, if the next char
+        // is not a new line or space then repeat
+        iter_end.forward_to_line_end();
+        if (!iter_end.forward_char()) break;
+        next_char = iter_end.get_char();
     }
-    if (0 == syntaxHighlighting.compare(CtConst::PLAIN_TEXT_ID))
-    {
-        return _pCtConfig->ptFont;
-    }
-    return _pCtConfig->codeFont;
-}
 
-std::string CtMainWin::get_font_css_for_syntax_highlighting(const std::string& syntaxHighlighting)
-{
-    return get_font_css(get_font_for_syntax_highlighting(syntaxHighlighting));
+    // reverse to beginning of line to check for space indicating line
+    // selected is the first line of a paragraph
+    iter_start.backward_chars(iter_start.get_visible_line_offset());
+    // reverse until either a new line or a space is found
+    while (iter_start.get_char() != '\n' && iter_start.get_char() != ' ')
+        if (!iter_start.backward_line()) break;
+
+    if (iter_start.get_char() == '\n')
+        iter_start.forward_chars(1);
+
+    text_buffer->move_mark(text_buffer->get_insert(), iter_start);
+    text_buffer->move_mark(text_buffer->get_selection_bound(), iter_end);
 }
 
 void CtMainWin::_reset_CtTreestore_CtTreeview()
@@ -427,9 +435,10 @@ void CtMainWin::_reset_CtTreestore_CtTreeview()
     _uCtTreeview->signal_cursor_changed().connect(sigc::mem_fun(*this, &CtMainWin::_on_treeview_cursor_changed));
     _uCtTreeview->signal_button_release_event().connect(sigc::mem_fun(*this, &CtMainWin::_on_treeview_button_release_event));
     _uCtTreeview->signal_key_press_event().connect(sigc::mem_fun(*this, &CtMainWin::_on_treeview_key_press_event), false);
+    _uCtTreeview->signal_scroll_event().connect(sigc::mem_fun(*this, &CtMainWin::_on_treeview_scroll_event));
     _uCtTreeview->signal_popup_menu().connect(sigc::mem_fun(*this, &CtMainWin::_on_treeview_popup_menu));
 
-    _uCtTreeview->get_style_context()->add_class("ct_node_view");
+    _uCtTreeview->get_style_context()->add_class("ct-tree-panel");
 }
 
 void CtMainWin::config_apply_before_show_all()
@@ -471,7 +480,7 @@ void CtMainWin::config_update_data_from_curr_status()
 }
 
 void CtMainWin::configure_theme()
-{
+{ 
     auto font_to_string = [](Pango::FontDescription font)
     {
         return " { font-family: " + font.get_family() +
@@ -484,42 +493,30 @@ void CtMainWin::configure_theme()
     std::string codeFont = font_to_string(Pango::FontDescription(_pCtConfig->codeFont));
     std::string treeFont = font_to_string(Pango::FontDescription(_pCtConfig->treeFont));
 
-    auto screen = get_screen();
-    if (_css_provider_theme_font)
-    {
-        Gtk::StyleContext::remove_provider_for_screen(screen, _css_provider_theme_font);
-    }
-    _css_provider_theme_font = Gtk::CssProvider::create();
-
     std::string font_css;
-    font_css += ".ct_textview.rich-text" + rtFont;
-    font_css += ".ct_textview.plain-text" + plFont;
-    font_css += ".ct_textview.code" + codeFont;
-    font_css += ".codebox.rich-text" + rtFont;
-    font_css += ".codebox.plain-text" + codeFont;
-    font_css += ".codebox.code" + codeFont;
-    font_css += ".ct_node_view" + treeFont;
+    font_css += ".ct-view-panel.ct-view-rich-text" + rtFont;
+    font_css += ".ct-view-panel.ct-view-plain-text" + plFont;
+    font_css += ".ct-view-panel.ct-view-code" + codeFont;
+    font_css += ".ct-codebox.ct-view-rich-text" + rtFont;
+    font_css += ".ct-codebox.ct-view-plain-text" + codeFont;
+    font_css += ".ct-codebox.ct-view-code" + codeFont;
+    font_css += ".ct-tree-panel" + treeFont;
 
-    _css_provider_theme_font->load_from_data(font_css);
-    get_style_context()->add_provider_for_screen(screen, _css_provider_theme_font, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    std::string theme_css;
+    theme_css += ".ct-tree-panel { color: " + _pCtConfig->ttDefFg + "; background-color: " + _pCtConfig->ttDefBg + "; } ";
+    theme_css += ".ct-tree-panel:selected { background: #5294e2;  } ";
+    theme_css += ".ct_header-panel { background-color: " + _pCtConfig->ttDefBg + "; } ";
+    theme_css += ".ct-table-header-cell { font-weight: bold; } ";
+    theme_css += ".ct-table grid { background: #cccccc; border-style:solid; border-width: 1px; border-color: gray; } ";
 
-#ifdef THEME_FIXES_REQUIRED
-    // can do more complicated things than just changing colors
-    if (_css_provider_theme)
+    if (!_css_provider_theme)
     {
-        Gtk::StyleContext::remove_provider_for_screen(screen, _css_provider_theme);
+        Gtk::StyleContext::remove_provider_for_screen(get_screen(), _css_provider_theme);
     }
     _css_provider_theme = Gtk::CssProvider::create();
-    std::string theme_css;
-    // todo: rich text fix light selected line with dark theme
-    theme_css += ".ct_textview.rich-text > text { color: " + _pCtConfig->rtDefFg + "; background-color: " + _pCtConfig->rtDefBg + "; } ";
-    // todo: tree selected node highlight no longer working
-    theme_css += ".ct_node_view { color: " + _pCtConfig->ttDefFg + "; background-color: " + _pCtConfig->ttDefBg + "; } ";
-    theme_css += ".ct_header { background-color: " + _pCtConfig->ttDefBg + "; } ";
-
+    _css_provider_theme->load_from_data(font_css);
     _css_provider_theme->load_from_data(theme_css);
-    get_style_context()->add_provider_for_screen(screen, _css_provider_theme, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-#endif // THEME_FIXES_REQUIRED
+    get_style_context()->add_provider_for_screen(get_screen(), _css_provider_theme, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
 
 Gtk::HBox& CtMainWin::_init_status_bar()
@@ -529,6 +526,9 @@ Gtk::HBox& CtMainWin::_init_status_bar()
     _ctStatusBar.frame.set_border_width(1);
     _ctStatusBar.frame.add(_ctStatusBar.progressBar);
     _ctStatusBar.stopButton.set_image_from_icon_name("stop", Gtk::ICON_SIZE_MENU);
+    _ctStatusBar.statusBar.set_margin_top(0);
+    _ctStatusBar.statusBar.set_margin_bottom(0);
+    _ctStatusBar.hbox.set_border_width(0);
     _ctStatusBar.hbox.pack_start(_ctStatusBar.statusBar, true, true);
     _ctStatusBar.hbox.pack_start(_ctStatusBar.frame, false, true);
     _ctStatusBar.hbox.pack_start(_ctStatusBar.stopButton, false, true);
@@ -553,7 +553,7 @@ Gtk::EventBox& CtMainWin::_init_window_header()
     _ctWinHeader.headerBox.pack_start(_ctWinHeader.lockIcon, false, false);
     _ctWinHeader.headerBox.pack_start(_ctWinHeader.bookmarkIcon, false, false);
     _ctWinHeader.eventBox.add(_ctWinHeader.headerBox);
-    _ctWinHeader.eventBox.get_style_context()->add_class("ct_header");
+    _ctWinHeader.eventBox.get_style_context()->add_class("ct-header-panel");
     return _ctWinHeader.eventBox;
 }
 
@@ -679,6 +679,16 @@ void CtMainWin::_ensure_curr_doc_in_recent_docs()
         }
         _pCtConfig->recentDocsRestore[currDocFilePath] = prevDocRestore;
     }
+}
+
+void CtMainWin::_zoom_tree(bool is_increase)
+{
+    Glib::RefPtr<Gtk::StyleContext> context = _uCtTreeview->get_style_context();
+    Pango::FontDescription description = context->get_font(context->get_state());
+    auto size = description.get_size() / Pango::SCALE + (is_increase ? 1 : -1);
+    if (size < 6) size = 6;
+    description.set_size(size * Pango::SCALE);
+    _uCtTreeview->override_font(description);
 }
 
 bool CtMainWin::filepath_open(const std::string& filepath, const bool force_reset)
@@ -826,6 +836,7 @@ bool CtMainWin::read_nodes_from_gio_file(const Glib::RefPtr<Gio::File>& r_file, 
                                                        &_ctTextview,
                                                        iterDocsRestore->second.node_path,
                                                        iterDocsRestore->second.cursor_pos);
+            _ctTextview.grab_focus();
         }
     }
     return retOk;
@@ -998,8 +1009,8 @@ void CtMainWin::load_buffer_from_state(std::shared_ptr<CtNodeState> state, CtTre
     }
     tree_iter.remove_all_embedded_widgets();
     // CtXmlRead(this).get_text_buffer_slot didn't fill widgets, they are kept separately
-    for (auto widget: state->widgets)
-        widgets.push_back(widget->clone());
+    for (auto widgetState: state->widgetStates)
+        widgets.push_back(widgetState->to_widget(this));
     for (auto widget: widgets)
         widget->insertInTextBuffer(gsv_buffer);
     curr_tree_store().addAnchoredWidgets(tree_iter, widgets, &get_text_view());
@@ -1008,7 +1019,6 @@ void CtMainWin::load_buffer_from_state(std::shared_ptr<CtNodeState> state, CtTre
     text_buffer->set_modified(false);
 
     get_text_view().set_buffer(text_buffer);
-    // todo: objects_buffer_refresh()
     text_buffer->place_cursor(text_buffer->get_iter_at_offset(state->cursor_pos));
     get_text_view().scroll_to(text_buffer->get_insert(), CtTextView::TEXT_SCROLL_MARGIN);
 
@@ -1040,7 +1050,6 @@ void CtMainWin::_on_treeview_cursor_changed()
     window_header_update_bookmark_icon(false);
     update_selected_node_statusbar_info();
     get_state_machine().node_selected_changed(treeIter.get_node_id());
-    // todo: objects_buffer_refresh();
 
     _prevTreeIter = treeIter;
 }
@@ -1057,7 +1066,6 @@ bool CtMainWin::_on_treeview_button_release_event(GdkEventButton* event)
 
 bool CtMainWin::_on_window_key_press_event(GdkEventKey* event)
 {
-    // todo:
     if (event->state & GDK_CONTROL_MASK) {
         if (event->keyval == GDK_KEY_Tab) {
             _pCtActions->toggle_tree_text();
@@ -1069,15 +1077,26 @@ bool CtMainWin::_on_window_key_press_event(GdkEventKey* event)
 
 bool CtMainWin::_on_treeview_key_press_event(GdkEventKey* event)
 {
-    // todo:
     if (not curr_tree_iter()) return false;
     if (event->state & GDK_SHIFT_MASK) {
-        if (event->keyval == GDK_KEY_Up) {
+        if (event->state & GDK_CONTROL_MASK && event->keyval == GDK_KEY_Right) {
+            _pCtActions->node_change_father();
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Up) {
             _pCtActions->node_up();
             return true;
         }
-        if (event->keyval == GDK_KEY_Down) {
+        else if (event->keyval == GDK_KEY_Down) {
             _pCtActions->node_down();
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Left) {
+            _pCtActions->node_left();
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Right) {
+            _pCtActions->node_right();
             return true;
         }
     }
@@ -1085,11 +1104,78 @@ bool CtMainWin::_on_treeview_key_press_event(GdkEventKey* event)
 
     }
     else if (event->state & GDK_CONTROL_MASK) {
+        auto reduce = [](Gtk::TreeIter first, std::function<Gtk::TreeIter(Gtk::TreeIter)> operatr) -> Gtk::TreeIter
+        {
+            Gtk::TreeIter result;
+            for (auto next = operatr(first); next; next = operatr(next))
+                result = next;
+            return result;
+        };
 
+        if (event->keyval == GDK_KEY_Up) {
+            auto fist_sibling = reduce(curr_tree_iter(), [](Gtk::TreeIter iter) { return --iter;});
+            if (fist_sibling)
+                curr_tree_view().set_cursor_safe(fist_sibling);
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Down) {
+            auto last_sibling = reduce(curr_tree_iter(), [](Gtk::TreeIter iter) { return ++iter;});
+            if (last_sibling)
+                curr_tree_view().set_cursor_safe(last_sibling);
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Left) {
+            auto fist_parent = reduce(curr_tree_iter(), [](Gtk::TreeIter iter) { return iter->parent();});
+            if (fist_parent)
+                curr_tree_view().set_cursor_safe(fist_parent);
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Right) {
+            auto last_child = reduce(curr_tree_iter(), [](Gtk::TreeIter iter) { return iter->children().begin();});
+            if (last_child)
+                curr_tree_view().set_cursor_safe(last_child);
+            return true;
+        } else {
+            if (event->keyval == GDK_KEY_plus || event->keyval == GDK_KEY_KP_Add || event->keyval == GDK_KEY_equal) {
+                _zoom_tree(true);
+                return true;
+            }
+            else if (event->keyval == GDK_KEY_minus|| event->keyval == GDK_KEY_KP_Subtract) {
+                _zoom_tree(false);
+                return true;
+            }
+        }
     }
     else {
-        if (event->keyval == GDK_KEY_Tab) {
+        if (event->keyval == GDK_KEY_Left) {
+            if (_uCtTreeview->row_expanded(_uCtTreestore->get_path(curr_tree_iter())))
+                _uCtTreeview->collapse_row(_uCtTreestore->get_path(curr_tree_iter()));
+            else if (curr_tree_iter().parent())
+                curr_tree_view().set_cursor_safe(curr_tree_iter().parent());
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Right) {
+            curr_tree_view().expand_row(curr_tree_store().get_path(curr_tree_iter()), false);
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Return) {
+            auto path = curr_tree_store().get_path(curr_tree_iter());
+            if (_uCtTreeview->row_expanded(path))
+                _uCtTreeview->collapse_row(path);
+            else
+                _uCtTreeview->expand_row(path, false);
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Menu) {
+            _pCtMenu->get_popup_menu(CtMenu::POPUP_MENU_TYPE::Node)->popup(0, event->time);
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Tab) {
             _pCtActions->toggle_tree_text();
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_Delete) {
+            _pCtActions->node_delete();
             return true;
         }
     }
@@ -1099,6 +1185,17 @@ bool CtMainWin::_on_treeview_key_press_event(GdkEventKey* event)
 bool CtMainWin::_on_treeview_popup_menu()
 {
     _pCtMenu->get_popup_menu(CtMenu::POPUP_MENU_TYPE::Node)->popup(0, 0);
+    return true;
+}
+
+bool CtMainWin::_on_treeview_scroll_event(GdkEventScroll* event)
+{
+    if (!(event->state & GDK_CONTROL_MASK))
+        return false;
+    if  (event->direction == GDK_SCROLL_UP || event->direction == GDK_SCROLL_DOWN)
+        _zoom_tree(event->direction == GDK_SCROLL_UP);
+    if  (event->direction == GDK_SCROLL_SMOOTH && event->delta_y != 0)
+        _zoom_tree(event->delta_y > 0);
     return true;
 }
 
@@ -1133,13 +1230,18 @@ void CtMainWin::_on_textview_populate_popup(Gtk::Menu* menu)
                 }
                 if (do_set_cursor) curr_buffer()->place_cursor(target_iter);
             }
+            for (auto iter : menu->get_children()) menu->remove(*iter);
             get_ct_menu().build_popup_menu(GTK_WIDGET(menu->gobj()), CtMenu::POPUP_MENU_TYPE::Link);
         }
-        else
+        else {
+            for (auto iter : menu->get_children()) menu->remove(*iter);
             get_ct_menu().build_popup_menu(GTK_WIDGET(menu->gobj()), CtMenu::POPUP_MENU_TYPE::Text);
+        }
     }
-    else
+    else {
+        for (auto iter : menu->get_children()) menu->remove(*iter);
         _pCtActions->getCtMainWin()->get_ct_menu().build_popup_menu(GTK_WIDGET(menu->gobj()), CtMenu::POPUP_MENU_TYPE::Code);
+    }
 }
 
 // Update the cursor image if the pointer moved
@@ -1304,6 +1406,17 @@ bool CtMainWin::_on_textview_event(GdkEvent* event)
             }
         }
     }
+    else if (event->key.state & Gdk::CONTROL_MASK)
+    {
+        if (event->key.keyval == GDK_KEY_plus || event->key.keyval == GDK_KEY_KP_Add || event->key.keyval == GDK_KEY_equal) {
+            _ctTextview.zoom_text(true);
+            return true;
+        }
+        else if (event->key.keyval == GDK_KEY_minus|| event->key.keyval == GDK_KEY_KP_Subtract) {
+            _ctTextview.zoom_text(false);
+            return true;
+        }
+    }
     return false;
 }
 
@@ -1313,6 +1426,11 @@ void CtMainWin::_on_textview_event_after(GdkEvent* event)
     if (event->type == GDK_2BUTTON_PRESS and event->button.button == 1)
     {
         get_text_view().for_event_after_double_click_button1(event);
+    }
+    if (event->type == GDK_3BUTTON_PRESS and event->button.button == 1)
+    {
+        if (curr_tree_iter().get_node_is_rich_text())
+            get_text_view().for_event_after_triple_click_button1(event);
     }
     else if (event->type == GDK_BUTTON_PRESS or event->type == GDK_KEY_PRESS)
     {
@@ -1339,6 +1457,17 @@ void CtMainWin::_on_textview_event_after(GdkEvent* event)
             }
         }
     }
+}
+
+bool CtMainWin::_on_textview_scroll_event(GdkEventScroll* event)
+{
+    if (!(event->state & GDK_CONTROL_MASK))
+        return false;
+    if  (event->direction == GDK_SCROLL_UP || event->direction == GDK_SCROLL_DOWN)
+        _ctTextview.zoom_text(event->direction == GDK_SCROLL_UP);
+    if  (event->direction == GDK_SCROLL_SMOOTH && event->delta_y != 0)
+        _ctTextview.zoom_text(event->delta_y > 0);
+    return true;
 }
 
 void CtMainWin::_title_update(const bool saveNeeded)

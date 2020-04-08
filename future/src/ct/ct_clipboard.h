@@ -25,6 +25,7 @@
 #include <ct_treestore.h>
 #include <libxml++/libxml++.h>
 #include "ct_codebox.h"
+#include "ct_table.h"
 
 struct CtClipboardData
 {
@@ -38,7 +39,6 @@ struct CtClipboardData
 class CtClipboard
 {
 public:
-    CtClipboard() {} // use from static, need to set pCtMainWin manually just before usage
     CtClipboard(CtMainWin* pCtMainWin);
 
 public:
@@ -46,15 +46,15 @@ public:
     static void on_copy_clipboard(GtkTextView* pTextView, gpointer codebox);
     static void on_paste_clipboard(GtkTextView* pTextView, gpointer codebox);
     static void force_plain_text() { _static_force_plain_text = true; }
-    static CtMainWin* pCtMainWin;
 
 private:
-    CtMainWin* _get_CtMainWin();
     void _cut_clipboard(Gtk::TextView* pTextView, CtCodebox* pCodebox);
     void _copy_clipboard(Gtk::TextView* pTextView, CtCodebox* pCodebox);
     void _paste_clipboard(Gtk::TextView* pTextView, CtCodebox* pCodebox);
 
 public:
+    void          table_row_to_clipboard(CtTable* pTable);
+    void          table_row_paste(CtTable* pTable);
     Glib::ustring rich_text_get_from_text_buffer_selection(CtTreeIter node_iter, Glib::RefPtr<Gtk::TextBuffer> text_buffer,
                                                            Gtk::TextIter iter_sel_start, Gtk::TextIter iter_sel_end,
                                                            gchar change_case = 'n', bool exclude_iter_sel_end = false);
@@ -67,24 +67,23 @@ private:
 
 private:
     void _selection_to_clipboard(Glib::RefPtr<Gtk::TextBuffer> text_buffer, Gtk::TextView* sourceview, Gtk::TextIter iter_sel_start, Gtk::TextIter iter_sel_end, int num_chars, CtCodebox* pCodebox);
+    void _set_clipboard_data(const std::vector<std::string>& targets_list, CtClipboardData* clip_data);
 
 private:
-    void _set_clipboard_data(const std::vector<std::string>& targets_list, CtClipboardData* clip_data);
-    void _on_clip_data_get(Gtk::SelectionData& selection_data, guint info, CtClipboardData* clip_data);
-    void _on_clip_data_clear(CtClipboardData* clip_data);
+    void _on_clip_data_get(Gtk::SelectionData& selection_data, CtClipboardData* clip_data);
 
 private:
     void _on_received_to_plain_text(const Gtk::SelectionData& selection_data, Gtk::TextView* pTextView, bool force_plain_text);
     void _on_received_to_rich_text(const Gtk::SelectionData& selection_data, Gtk::TextView* pTextView, bool);
     void _on_received_to_codebox(const Gtk::SelectionData& selection_data, Gtk::TextView* pTextView, bool);
-    void _on_received_to_table(const Gtk::SelectionData& selection_data, Gtk::TextView* pTextView, bool);
+    void _on_received_to_table(const Gtk::SelectionData& selection_data, Gtk::TextView* pTextView, bool, CtTable* parentTable);
     void _on_received_to_html(const Gtk::SelectionData& selection_data, Gtk::TextView* pTextView, bool);
     void _on_received_to_image(const Gtk::SelectionData& selection_data, Gtk::TextView* pTextView, bool);
     void _on_received_to_uri_list(const Gtk::SelectionData& selection_data, Gtk::TextView* pTextView, bool);
 
 private:
     static bool _static_force_plain_text;
-    CtMainWin*   _pCtMainWin;
+    CtMainWin*  _pCtMainWin;
 };
 
 

@@ -173,12 +173,13 @@ CtTextView::~CtTextView()
 void CtTextView::setup_for_syntax(const std::string& syntax)
 {
     std::string new_class;
-    if (CtConst::RICH_TEXT_ID == syntax)         new_class = "rich-text";
-    else if (CtConst::PLAIN_TEXT_ID == syntax)   new_class = "plain-text";
-    else                                         new_class = "code";
-    get_style_context()->remove_class("rich-text");
-    get_style_context()->remove_class("plain-text");
-    get_style_context()->remove_class("code");
+    if (CtConst::RICH_TEXT_ID == syntax)         { new_class = "ct-view-rich-text"; }
+    else if (CtConst::PLAIN_TEXT_ID == syntax)   { new_class = "ct-view-plain-text"; }
+    else                                         { new_class = "ct-view-code"; }
+
+    if (new_class != "ct-view-rich-text") get_style_context()->remove_class("ct-view-rich-text");
+    if (new_class != "ct-view-plain-text") get_style_context()->remove_class("ct-view-plain-text");
+    if (new_class != "ct-view-code") get_style_context()->remove_class("ct-view-code");
     get_style_context()->add_class(new_class);
 
     if (CtConst::RICH_TEXT_ID == syntax)
@@ -199,7 +200,6 @@ void CtTextView::setup_for_syntax(const std::string& syntax)
             set_draw_spaces(Gsv::DRAW_SPACES_ALL & ~Gsv::DRAW_SPACES_NEWLINE);
         }
     }
-    _setFontForSyntax(syntax);
 }
 
 void CtTextView::set_pixels_inside_wrap(int space_around_lines, int relative_wrapped_space)
@@ -221,14 +221,6 @@ void CtTextView::set_selection_at_offset_n_delta(int offset, int delta, Glib::Re
     } else {
         // # print "! bad offset=%s, delta=%s on node %s" % (offset, delta, self.treestore[self.curr_tree_iter][1])
     }
-}
-
-void CtTextView::_setFontForSyntax(const std::string& syntaxHighlighting)
-{
-    Glib::RefPtr<Gtk::StyleContext> rStyleContext = get_style_context();
-    std::string fontCss = _pCtMainWin->get_font_css_for_syntax_highlighting(syntaxHighlighting);
-    _pCtMainWin->get_css_provider()->load_from_data(fontCss);
-    rStyleContext->add_provider(_pCtMainWin->get_css_provider(), GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
 // Called at list indent/unindent time
@@ -320,6 +312,17 @@ void CtTextView::for_event_after_double_click_button1(GdkEvent* event)
     Gtk::TextIter iter_start;
     get_iter_at_location(iter_start, x, y);
     _pCtMainWin->apply_tag_try_automatic_bounds(text_buffer, iter_start);
+}
+
+// Called after every Triple Click with button 1
+void CtTextView::for_event_after_triple_click_button1(GdkEvent* event)
+{
+     auto text_buffer = get_buffer();
+     int x, y;
+     window_to_buffer_coords(Gtk::TEXT_WINDOW_TEXT, (int)event->button.x, (int)event->button.y, x, y);
+     Gtk::TextIter iter_start;
+     get_iter_at_location(iter_start, x, y);
+     _pCtMainWin->apply_tag_try_automatic_bounds_triple_click(text_buffer, iter_start);
 }
 
 // Called after every gtk.gdk.BUTTON_PRESS on the SourceView
@@ -658,36 +661,12 @@ void CtTextView::cursor_and_tooltips_handler(int x, int y)
 // Increase or Decrease Text Font
 void CtTextView::zoom_text(bool is_increase)
 {
-    /* todo:
-    std::vector<Glib::ustring> font_vec;
-    if (syntax_highl == CtConst::RICH_TEXT_ID)
-        font_vec = str::split(rt_font.split(cons.CHAR_SPACE)
-    elif syntax_highl == cons.PLAIN_TEXT_ID:
-        font_vec = self.pt_font.split(cons.CHAR_SPACE)
-    else:
-        font_vec = self.code_font.split(cons.CHAR_SPACE)
-    font_num = int(font_vec[-1])
-    if is_increase is True:
-        font_vec[-1] = str(font_num+1)
-    else:
-        if font_num <= 6: return # do not go under 6
-        font_vec[-1] = str(font_num-1)
-    if syntax_highl == cons.RICH_TEXT_ID:
-        self.rt_font = cons.CHAR_SPACE.join(font_vec)
-        target_font = self.rt_font
-    elif syntax_highl == cons.PLAIN_TEXT_ID:
-        self.pt_font = cons.CHAR_SPACE.join(font_vec)
-        target_font = self.pt_font
-    else:
-        self.code_font = cons.CHAR_SPACE.join(font_vec)
-        target_font = self.code_font
-    if from_codebox is True:
-        support.rich_text_node_modify_codeboxes_font(self.curr_buffer.get_start_iter(), self)
-    elif from_table is True:
-        support.rich_text_node_modify_tables_font(self.curr_buffer.get_start_iter(), self)
-    else:
-        self.sourceview.modify_font(pango.FontDescription(target_font))
-        */
+    Glib::RefPtr<Gtk::StyleContext> context = get_style_context();
+    Pango::FontDescription description = context->get_font(context->get_state());
+    auto size = description.get_size() / Pango::SCALE + (is_increase ? 1 : -1);
+    if (size < 6) size = 6;
+    description.set_size(size * Pango::SCALE);
+    override_font(description);
 }
 
 // Try and apply link to previous word (after space or newline)

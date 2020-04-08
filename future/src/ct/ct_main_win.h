@@ -30,13 +30,12 @@
 #include "ct_treestore.h"
 #include "ct_misc_utils.h"
 #include "ct_menu.h"
-#include "ct_state_machine.h"
 #include "ct_widgets.h"
 #include "ct_config.h"
 #include "ct_table.h"
 #include "ct_image.h"
 #include "ct_print.h"
-
+#include "ct_state_machine.h"
 
 struct CtStatusBar
 {
@@ -141,9 +140,7 @@ public:
     const std::string get_text_tag_name_exist_or_create(const std::string& propertyName, const std::string& propertyValue);
     Glib::ustring sourceview_hovering_link_get_tooltip(const Glib::ustring& link);
     bool apply_tag_try_automatic_bounds(Glib::RefPtr<Gtk::TextBuffer> text_buffer, Gtk::TextIter iter_start);
-    std::string get_font_css(const std::string& fontStr);
-    const std::string& get_font_for_syntax_highlighting(const std::string& syntaxHighlighting);
-    std::string get_font_css_for_syntax_highlighting(const std::string& syntaxHighlighting);
+    bool apply_tag_try_automatic_bounds_triple_click(Glib::RefPtr<Gtk::TextBuffer> text_buffer, Gtk::TextIter iter_start);
 
 private:
     Gtk::HBox&     _init_status_bar();
@@ -168,6 +165,7 @@ public:
     void show_hide_win_header(bool visible) { _ctWinHeader.headerBox.property_visible() = visible; }
     void set_toolbar_icon_size(int size)    { _pToolbar->property_icon_size() = CtMiscUtil::getIconSize(size); }
 
+    void resetPrevTreeIter()                { _prevTreeIter = CtTreeIter(); }
 private:
     bool                _on_window_key_press_event(GdkEventKey* event);
 
@@ -175,6 +173,7 @@ private:
     bool                _on_treeview_button_release_event(GdkEventButton* event);
     bool                _on_treeview_key_press_event(GdkEventKey* event);
     bool                _on_treeview_popup_menu();
+    bool                _on_treeview_scroll_event(GdkEventScroll* event);
 
     void                _on_textview_populate_popup(Gtk::Menu* menu);
     bool                _on_textview_motion_notify_event(GdkEventMotion* event);
@@ -182,11 +181,13 @@ private:
     void                _on_textview_size_allocate(Gtk::Allocation& allocation);
     bool                _on_textview_event(GdkEvent* event); // pygtk: on_sourceview_event
     void                _on_textview_event_after(GdkEvent* event); // pygtk: on_sourceview_event_after
+    bool                _on_textview_scroll_event(GdkEventScroll* event);
 
     void                _title_update(const bool saveNeeded); // pygtk: window_title_update
     void                _set_new_curr_doc(const Glib::RefPtr<Gio::File>& r_file, const std::string& password);
     void                _reset_CtTreestore_CtTreeview();
     void                _ensure_curr_doc_in_recent_docs();
+    void                _zoom_tree(bool is_increase);
 
 private:
     CtConfig*                    _pCtConfig;
@@ -227,7 +228,6 @@ private:
     CtCurrFile _ctCurrFile;
 
     Glib::RefPtr<Gtk::CssProvider> _css_provider_theme;
-    Glib::RefPtr<Gtk::CssProvider> _css_provider_theme_font;
 
 private:
     bool                _userActive{true}; // pygtk: user_active

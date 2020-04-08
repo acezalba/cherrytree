@@ -101,6 +101,8 @@ public:
     void file_save();
     void file_vacuum();
     void file_save_as();
+    void folder_cfg_open();
+    void online_help();
 
 private:
     // helpers for tree actions
@@ -118,6 +120,7 @@ public:
     void node_dublicate() { _node_add(true, false);  }
     void node_child_add() { _node_add(false, true); }
     void node_edit();
+    void node_delete();
     void node_toggle_read_only();
     void node_date();
     void node_up();
@@ -129,6 +132,8 @@ public:
     void tree_sort_descending();
     void node_siblings_sort_ascending();
     void node_siblings_sort_descending();
+    void node_go_back();    // was as go_back
+    void node_go_forward(); // was as go_forward
 
     void bookmark_curr_node();
     void bookmark_curr_node_remove();
@@ -239,6 +244,7 @@ private:
                                      Gtk::TextIter insertIter,
                                      Gtk::TextIter* pIterBound);
     void          _text_selection_change_case(gchar change_type);
+    int           _table_dialog(Glib::ustring title, bool is_insert);
 
 public:
     void          image_insert_png(Gtk::TextIter iter_insert, Glib::RefPtr<Gdk::Pixbuf> pixbuf,
@@ -281,6 +287,10 @@ private:
 
 public:
     // others actions
+    void link_cut();
+    void link_copy();
+    void link_dismiss();
+    void link_delete();
     void anchor_cut();
     void anchor_copy();
     void anchor_delete();
@@ -313,6 +323,25 @@ public:
     void codebox_decrease_width();
     void codebox_increase_height();
     void codebox_decrease_height();
+
+    void table_cut();
+    void table_copy();
+    void table_delete();
+    void table_column_add();
+    void table_column_delete();
+    void table_column_left();
+    void table_column_right();
+    void table_row_add();
+    void table_row_cut();
+    void table_row_copy();
+    void table_row_paste();
+    void table_row_delete();
+    void table_row_up();
+    void table_row_down();
+    void table_rows_sort_descending();
+    void table_rows_sort_ascending();
+    void table_edit_properties();
+    void table_export();
 
 private:
     // helper for export actions

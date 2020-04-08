@@ -94,8 +94,8 @@ void CtActions::_export_print(bool save_to_pdf, Glib::ustring auto_path, bool au
         if (auto_path != "")
         {
             pdf_filepath = auto_path;
-            // todo: if (!auto_overwrite && Gio::File:: os.path.isfile(self.print_handler.pdf_filepath):
-            //    return
+            if (!auto_overwrite && Glib::file_test(pdf_filepath, Glib::FILE_TEST_IS_REGULAR))
+                return;
         }
         else if (save_to_pdf)
         {
@@ -130,39 +130,24 @@ void CtActions::_export_to_html(Glib::ustring auto_path, bool auto_overwrite)
     if (export_type == CtDialogs::CtProcessNode::NONE) return;
 
     CtExport2Html export2html(_pCtMainWin);
+    Glib::ustring ret_html_path;
     if (export_type == CtDialogs::CtProcessNode::CURRENT_NODE)
     {
         Glib::ustring folder_name = CtMiscUtil::get_node_hierarchical_name(_pCtMainWin->curr_tree_iter());
-        if (export2html.prepare_html_folder("", folder_name, false))
+        if (export2html.prepare_html_folder("", folder_name, false, ret_html_path))
             export2html.node_export_to_html(_pCtMainWin->curr_tree_iter(), _export_options, "", -1, -1);
     }
     else if (export_type == CtDialogs::CtProcessNode::CURRENT_NODE_AND_SUBNODES)
     {
         Glib::ustring folder_name = CtMiscUtil::get_node_hierarchical_name(_pCtMainWin->curr_tree_iter());
-        if (export2html.prepare_html_folder("", folder_name, false))
-        {
+        if (export2html.prepare_html_folder("", folder_name, false, ret_html_path))
             export2html.nodes_all_export_to_html(false, _export_options);
-            // todo: why is it here? need to remove?
-            if (_pCtMainWin->get_curr_doc_file_type() == CtDocType::SQLite && _pCtMainWin->curr_tree_iter())
-            {
-                _pCtMainWin->get_state_machine().update_state();
-                // todo: _pCtMainWin->objects_buffer_refresh();
-            }
-        }
     }
     else if (export_type == CtDialogs::CtProcessNode::ALL_TREE)
     {
         Glib::ustring folder_name = _pCtMainWin->get_curr_doc_file_name();
-        if (export2html.prepare_html_folder(auto_path, folder_name, auto_overwrite))
-        {
+        if (export2html.prepare_html_folder(auto_path, folder_name, auto_overwrite, ret_html_path))
             export2html.nodes_all_export_to_html(true, _export_options);
-            // todo: why is it here? need to remove?
-            if (_pCtMainWin->get_curr_doc_file_type() == CtDocType::SQLite && _pCtMainWin->curr_tree_iter())
-            {
-                _pCtMainWin->get_state_machine().update_state();
-                // todo: _pCtMainWin->objects_buffer_refresh();
-            }
-        }
     }
     else if (export_type == CtDialogs::CtProcessNode::SELECTED_TEXT)
     {
@@ -171,9 +156,11 @@ void CtActions::_export_to_html(Glib::ustring auto_path, bool auto_overwrite)
         _curr_buffer()->get_selection_bounds(iter_start, iter_end);
 
         Glib::ustring folder_name = CtMiscUtil::get_node_hierarchical_name(_pCtMainWin->curr_tree_iter());
-        if (export2html.prepare_html_folder("", folder_name, false))
+        if (export2html.prepare_html_folder("", folder_name, false, ret_html_path))
             export2html.node_export_to_html(_pCtMainWin->curr_tree_iter(), _export_options, "", iter_start.get_offset(), iter_end.get_offset());
     }
+    if (!ret_html_path.empty())
+       CtFileSystem::external_folderpath_open(ret_html_path);
 }
 
 // Export To Plain Text Multiple (or single) Files

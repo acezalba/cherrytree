@@ -83,7 +83,8 @@ CtCodebox::CtCodebox(CtMainWin* pCtMainWin,
    _frameHeight(frameHeight),
    _key_down(false)
 {
-    _ctTextview.get_style_context()->add_class("codebox");
+    _ctTextview.get_style_context()->add_class("ct-codebox");
+    _ctTextview.set_border_width(1);
 
     _scrolledwindow.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
     _scrolledwindow.add(_ctTextview);
@@ -99,6 +100,7 @@ CtCodebox::CtCodebox(CtMainWin* pCtMainWin,
     // signals
     _ctTextview.signal_populate_popup().connect([this](Gtk::Menu* menu){
         if (not _pCtMainWin->get_ct_actions()->getCtMainWin()->user_active()) return;
+        for (auto iter : menu->get_children()) menu->remove(*iter);
         _pCtMainWin->get_ct_actions()->curr_codebox_anchor = this;
         _pCtMainWin->get_ct_actions()->getCtMainWin()->get_ct_menu().build_popup_menu(GTK_WIDGET(menu->gobj()), CtMenu::POPUP_MENU_TYPE::Codebox);
     });
@@ -129,12 +131,13 @@ CtCodebox::CtCodebox(CtMainWin* pCtMainWin,
         return false;
     });
     _ctTextview.signal_scroll_event().connect([this](GdkEventScroll* event){
-        if (event->state & GDK_CONTROL_MASK and (event->direction == GDK_SCROLL_UP or event->direction == GDK_SCROLL_DOWN))
-        {
+        if (!(event->state & GDK_CONTROL_MASK))
+            return false;
+        if  (event->direction == GDK_SCROLL_UP || event->direction == GDK_SCROLL_DOWN)
             _ctTextview.zoom_text(event->direction == GDK_SCROLL_UP);
-            return true;
-        }
-        return false;
+        if  (event->direction == GDK_SCROLL_SMOOTH && event->delta_y != 0)
+            _ctTextview.zoom_text(event->delta_y > 0);
+        return true;
     });
     _ctTextview.get_buffer()->signal_insert().connect([this](const Gtk::TextBuffer::iterator& pos, const Glib::ustring& text, int bytes) {
         if (_pCtMainWin->user_active())
@@ -209,28 +212,9 @@ bool CtCodebox::to_sqlite(sqlite3* pDb, const gint64 node_id, const int offset_a
     return retVal;
 }
 
-CtAnchoredWidget* CtCodebox::clone()
+std::shared_ptr<CtAnchoredWidgetState> CtCodebox::get_state()
 {
-    return new CtCodebox(_pCtMainWin, get_text_content(), _syntaxHighlighting, _frameWidth, _frameHeight,
-                         _charOffset, _justification,
-                         _widthInPixels, _highlightBrackets, _showLineNumbers);
-}
-
-bool CtCodebox::equal(CtAnchoredWidget* other)
-{
-    if (get_type() != other->get_type()) return false;
-    if (CtCodebox* other_codebox = dynamic_cast<CtCodebox*>(other))
-        if (_syntaxHighlighting == other_codebox->_syntaxHighlighting
-            && _frameWidth == other_codebox->_frameWidth
-            && _frameHeight == other_codebox->_frameHeight
-            && _charOffset == other_codebox->_charOffset
-            && _justification == other_codebox->_justification
-            && _widthInPixels == other_codebox->_widthInPixels
-            && _highlightBrackets == other_codebox->_highlightBrackets
-            && _showLineNumbers == other_codebox->_showLineNumbers
-            && get_text_content() == other_codebox->get_text_content())
-        return true;
-    return false;
+    return std::shared_ptr<CtAnchoredWidgetState>(new CtAnchoredWidgetState_Codebox(this));
 }
 
 void CtCodebox::set_show_line_numbers(const bool showLineNumbers)
@@ -291,6 +275,14 @@ bool CtCodebox::_on_key_press_event(GdkEventKey* event)
             text_iter.forward_char();
             _pCtMainWin->get_ct_actions()->getCtMainWin()->get_text_view().get_buffer()->place_cursor(text_iter);
             _pCtMainWin->get_ct_actions()->getCtMainWin()->get_text_view().grab_focus();
+            return true;
+        }
+        if (event->keyval == GDK_KEY_plus || event->keyval == GDK_KEY_KP_Add || event->keyval == GDK_KEY_equal) {
+            _ctTextview.zoom_text(true);
+            return true;
+        }
+        else if (event->keyval == GDK_KEY_minus|| event->keyval == GDK_KEY_KP_Subtract) {
+            _ctTextview.zoom_text(false);
             return true;
         }
     }

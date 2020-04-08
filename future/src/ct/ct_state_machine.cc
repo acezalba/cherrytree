@@ -23,6 +23,123 @@
 #include "ct_main_win.h"
 #include "ct_doc_rw.h"
 
+// ImagePng
+CtAnchoredWidgetState_ImagePng::CtAnchoredWidgetState_ImagePng(CtImagePng* image)
+    :CtAnchoredWidgetState(image->getOffset(), image->getJustification()),
+      link(image->get_link()), pixbuf(image->get_pixbuf()->copy())
+{
+
+}
+
+bool CtAnchoredWidgetState_ImagePng::equal(std::shared_ptr<CtAnchoredWidgetState> state)
+{
+    CtAnchoredWidgetState_ImagePng* other_state = dynamic_cast<CtAnchoredWidgetState_ImagePng*>(state.get());
+    return other_state && charOffset == other_state->charOffset && justification == other_state->justification &&
+            link == other_state->link &&
+            pixbuf->get_byte_length() == other_state->pixbuf->get_byte_length() &&
+            memcmp(pixbuf->get_pixels(), other_state->pixbuf->get_pixels(), pixbuf->get_byte_length() * sizeof(guint8));
+}
+
+CtAnchoredWidget* CtAnchoredWidgetState_ImagePng::to_widget(CtMainWin* pCtMainWin)
+{
+    return new CtImagePng(pCtMainWin, pixbuf->copy(), link, charOffset, justification);
+}
+
+// ImageAnchor
+CtAnchoredWidgetState_Anchor::CtAnchoredWidgetState_Anchor(CtImageAnchor* anchor)
+    :CtAnchoredWidgetState(anchor->getOffset(), anchor->getJustification()),
+      name(anchor->get_anchor_name())
+{
+
+}
+
+bool CtAnchoredWidgetState_Anchor::equal(std::shared_ptr<CtAnchoredWidgetState> state)
+{
+    CtAnchoredWidgetState_Anchor* other_state = dynamic_cast<CtAnchoredWidgetState_Anchor*>(state.get());
+    return other_state && charOffset == other_state->charOffset && justification == other_state->justification &&
+            name == other_state->name;
+}
+
+CtAnchoredWidget* CtAnchoredWidgetState_Anchor::to_widget(CtMainWin* pCtMainWin)
+{
+    return new CtImageAnchor(pCtMainWin, name, charOffset, justification);
+}
+
+// ImageEmbFile
+CtAnchoredWidgetState_EmbFile::CtAnchoredWidgetState_EmbFile(CtImageEmbFile* embFile)
+    :CtAnchoredWidgetState(embFile->getOffset(), embFile->getJustification()),
+      fileName(embFile->get_file_name()), rawBlob(embFile->get_raw_blob()), timeSeconds(embFile->get_time())
+{
+
+}
+
+bool CtAnchoredWidgetState_EmbFile::equal(std::shared_ptr<CtAnchoredWidgetState> state)
+{
+    CtAnchoredWidgetState_EmbFile* other_state = dynamic_cast<CtAnchoredWidgetState_EmbFile*>(state.get());
+    return other_state && charOffset == other_state->charOffset && justification == other_state->justification &&
+            fileName == other_state->fileName && rawBlob == other_state->rawBlob && timeSeconds == other_state->timeSeconds;
+}
+
+CtAnchoredWidget* CtAnchoredWidgetState_EmbFile::to_widget(CtMainWin* pCtMainWin)
+{
+    return new CtImageEmbFile(pCtMainWin, fileName, rawBlob, timeSeconds, charOffset, justification);
+}
+
+// Codebox
+CtAnchoredWidgetState_Codebox::CtAnchoredWidgetState_Codebox(CtCodebox* codebox)
+    :CtAnchoredWidgetState(codebox->getOffset(), codebox->getJustification()),
+      content(codebox->get_text_content()), syntax(codebox->get_syntax_highlighting()), width(codebox->get_frame_width()), height(codebox->get_frame_height()),
+      widthInPixels(codebox->get_width_in_pixels()), brackets(codebox->get_highlight_brackets()), showNum(codebox->get_show_line_numbers())
+{
+}
+
+bool CtAnchoredWidgetState_Codebox::equal(std::shared_ptr<CtAnchoredWidgetState> state)
+{
+    CtAnchoredWidgetState_Codebox* other_state = dynamic_cast<CtAnchoredWidgetState_Codebox*>(state.get());
+    return other_state && charOffset == other_state->charOffset && justification == other_state->justification &&
+            syntax == other_state->syntax && width == other_state->width && height == other_state->height &&
+            widthInPixels == other_state->widthInPixels && brackets == other_state->brackets && showNum == other_state->showNum &&
+            content == other_state->content;
+}
+
+CtAnchoredWidget* CtAnchoredWidgetState_Codebox::to_widget(CtMainWin* pCtMainWin)
+{
+    return new CtCodebox(pCtMainWin, content, syntax, width, height,
+                         charOffset, justification, widthInPixels, brackets, showNum);
+}
+
+// Table
+CtAnchoredWidgetState_Table::CtAnchoredWidgetState_Table(CtTable* table)
+    :CtAnchoredWidgetState(table->getOffset(), table->getJustification()), colMin(table->get_col_min()), colMax(table->get_col_max())
+{
+    for (auto& row: table->get_table_matrix())
+    {
+        rows.push_back(std::vector<Glib::ustring>());
+        for (auto& cell: row)  rows.back().push_back(cell->get_text_content());
+    }
+}
+
+bool CtAnchoredWidgetState_Table::equal(std::shared_ptr<CtAnchoredWidgetState> state)
+{
+    CtAnchoredWidgetState_Table* other_state = dynamic_cast<CtAnchoredWidgetState_Table*>(state.get());
+    return other_state && charOffset == other_state->charOffset && justification == other_state->justification &&
+            colMin == other_state->colMin && colMax == other_state->colMax && rows == other_state->rows;
+}
+
+CtAnchoredWidget* CtAnchoredWidgetState_Table::to_widget(CtMainWin* pCtMainWin)
+{
+    CtTableMatrix tableMatrix;
+    for (auto& row: rows)
+    {
+        tableMatrix.push_back(CtTableRow());
+        for (auto& cell: row) tableMatrix.back().push_back(new CtTableCell(pCtMainWin, cell, CtConst::TABLE_CELL_TEXT_ID));
+    }
+    return new CtTable(pCtMainWin, tableMatrix, colMin, colMax, true, charOffset, justification);
+}
+
+
+
+//
 CtStateMachine::CtStateMachine(CtMainWin *pCtMainWin) : _pCtMainWin(pCtMainWin)
 {
     _word_regex = Glib::Regex::create("\\w");
@@ -62,6 +179,8 @@ gint64 CtStateMachine::requested_visited_next()
 // When a New Node is Selected
 void CtStateMachine::node_selected_changed(gint64 node_id)
 {
+    if (node_id == -1)
+        return;
     if (_pCtMainWin->user_active() && !_go_bk_fw_click)
     {
         int last_index = (int)_visited_nodes_list.size() - 1;
@@ -78,7 +197,7 @@ void CtStateMachine::node_selected_changed(gint64 node_id)
         state->buffer_xml.append_node_buffer(node, state->buffer_xml.get_root_node(), false/*no widgets */);
         state->buffer_xml_string = state->buffer_xml.write_to_string();
         for (auto widget: node.get_embedded_pixbufs_tables_codeboxes())
-            state->widgets.push_back(widget->clone());
+            state->widgetStates.push_back(widget->get_state());
         state->cursor_pos = 0;
 
         CtNodeStates states;
@@ -182,18 +301,18 @@ void CtStateMachine::update_state(CtTreeIter tree_iter)
     new_state->buffer_xml.append_node_buffer(tree_iter, new_state->buffer_xml.get_root_node(), false/*no widgets*/);
     new_state->buffer_xml_string = new_state->buffer_xml.write_to_string();
     for (auto widget: tree_iter.get_embedded_pixbufs_tables_codeboxes())
-        new_state->widgets.push_back(widget->clone());
+        new_state->widgetStates.push_back(widget->get_state());
     new_state->cursor_pos = tree_iter.get_node_text_buffer()->property_cursor_position();
 
     if (node_states.states.size() > 0)
     {
-        auto compare_widgets = [](const std::list<CtAnchoredWidget*> lhs, const std::list<CtAnchoredWidget*> rhs) {
-            return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(), [](CtAnchoredWidget* lhs, CtAnchoredWidget* rhs) {
+        auto compare_widgets = [](const std::list<std::shared_ptr<CtAnchoredWidgetState>> lhs, const std::list<std::shared_ptr<CtAnchoredWidgetState>> rhs) {
+            return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(), [](std::shared_ptr<CtAnchoredWidgetState> lhs, std::shared_ptr<CtAnchoredWidgetState> rhs) {
                 return lhs->equal(rhs);
             });
         };
         auto last_state = node_states.states.back();
-        if (new_state->buffer_xml_string == last_state->buffer_xml_string && compare_widgets(new_state->widgets, last_state->widgets))
+        if (new_state->buffer_xml_string == last_state->buffer_xml_string && compare_widgets(new_state->widgetStates, last_state->widgetStates))
         {
             last_state->cursor_pos = new_state->cursor_pos;
             return; // #print "update_state not needed"
